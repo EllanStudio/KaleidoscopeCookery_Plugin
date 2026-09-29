@@ -17,6 +17,16 @@ def nmsVersions = [
 ]
 
 repositories {
+    // Resolve CraftEngine and its libraries from their authoritative repository first.
+    // This avoids needless Maven Central lookups for artifacts that are only published here.
+    maven {
+        name = "momirealmsReleases"
+        url = "https://repo.momirealms.net/releases/"
+    }
+    maven {
+        name = "momirealmsSnapshots"
+        url = "https://repo.momirealms.net/snapshots/"
+    }
     mavenCentral()
     maven {
         name = "papermc-repo"
@@ -29,12 +39,6 @@ repositories {
     maven {
         name = "xenondevsReleases"
         url = "https://repo.xenondevs.xyz/releases"
-    }
-    maven {
-        url = "https://repo.momirealms.net/releases/"
-    }
-    maven {
-        url = "https://repo.momirealms.net/snapshots/"
     }
     maven {
         name = "placeholderapi"
