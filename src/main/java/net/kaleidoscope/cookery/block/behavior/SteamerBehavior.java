@@ -6,7 +6,7 @@ import net.kaleidoscope.cookery.util.ConsoleMessages;
 
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitFallableBlock;
-import net.momirealms.craftengine.bukkit.nms.FastNMS;
+import net.momirealms.craftengine.bukkit.plugin.injector.FallingBlockEntityGenerator;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.DirectionUtils;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
@@ -436,22 +436,25 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         CompoundTag tag = new CompoundTag();
         BlockEntity blockEntity = BukkitWorldManager.instance().getWorld(
                 LevelProxy.INSTANCE.getWorld(level).getUID()).storageWorld().getBlockEntityAtIfLoaded(pos);
-        if (blockEntity != null) {
-            SteamerController controller = blockEntity.controller.get(SteamerController.class, this.controllerId);
-            if (controller != null) {
-                controller.saveCustomData(tag);
-                controller.markFallingAway();
-                Arrays.fill(controller.getItems(), Item.empty());
-            }
+        SteamerController controller = blockEntity == null ? null
+                : blockEntity.controller.get(SteamerController.class, this.controllerId);
+        if (controller != null) {
+            controller.saveCustomData(tag);
+            controller.markFallingAway();
+            Arrays.fill(controller.getItems(), Item.empty());
         }
 
-        Object fallingBlockEntity = FastNMS.INSTANCE.createInjectedFallingBlockEntity(level, blockPos, blockState);
-        PendingData pending = new PendingData(tag, customState, this.controllerId);
-        if (fallingBlockEntity == null) {
-            dropSteamer(level, blockPos, pending);
+        // CE 26.9 移除了 FastNMS#createInjectedFallingBlockEntity 统一由 FallingBlockEntityGenerator 生成下落实体
+        Object fallingBlockEntity = FallingBlockEntityGenerator.fall(level, blockPos, blockState);
+        if (BlockGetterProxy.INSTANCE.getBlockState(level, blockPos) == blockState) {
+            // EntityChangeBlockEvent 被取消 方块留在原位且下落实体未生成 还原蒸笼内容
+            if (controller != null) {
+                controller.loadCustomData(tag);
+                controller.clearFallingAway();
+            }
             return;
         }
-        pendingData.put(fallingBlockEntity, pending);
+        pendingData.put(fallingBlockEntity, new PendingData(tag, customState, this.controllerId));
     }
 
     @Override

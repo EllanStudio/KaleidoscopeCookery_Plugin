@@ -13,7 +13,7 @@ import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import org.joml.Quaternionf;
 
-import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 
 // 椅面上的坐垫 没铺地毯时不生成任何实体
 public final class ChairElement implements FurnitureElement {
@@ -51,7 +51,7 @@ public final class ChairElement implements FurnitureElement {
     }
 
     @Override
-    public void gatherInteractableEntityId(Consumer<Integer> collector) {
+    public void gatherInteractableEntityId(IntConsumer collector) {
     }
 
     @Override

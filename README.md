@@ -64,6 +64,7 @@
 ## 📦 依赖与构建
 
 - **运行环境**：Paper / Folia，需安装 [CraftEngine](https://github.com/Xiao-MoMi/craft-engine)（`plugin.yml` 声明为前置且 `load: BEFORE`）。
+- **CraftEngine 版本**：需要 **26.9.1** 及以上（插件针对 26.9.1 API 编译，26.8.x 及更早版本会因家具元素接口变化而无法加载）。
 
 - **领地保护**：内置打包 [AntiGriefLib](https://github.com/Xiao-MoMi/AntiGriefLib)（shadow 重定位到 `net.kaleidoscope.cookery.libs.antigrieflib`），自动复用服务器上的领地 / 保护插件做交互与破坏判定。
 

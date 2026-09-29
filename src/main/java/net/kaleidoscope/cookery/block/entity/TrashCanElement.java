@@ -18,7 +18,7 @@ import net.kaleidoscope.cookery.util.InventoryUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 
 public final class TrashCanElement implements FurnitureElement {
     private static final double BASE_X_OFFSET = 0.0;
@@ -154,7 +154,7 @@ public final class TrashCanElement implements FurnitureElement {
     }
 
     @Override
-    public void gatherInteractableEntityId(Consumer<Integer> collector) {
+    public void gatherInteractableEntityId(IntConsumer collector) {
         collector.accept(display.id(BODY_SLOT));
         collector.accept(display.id(LID_SLOT));
     }

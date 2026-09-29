@@ -15,7 +15,7 @@ import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import org.joml.Quaternionf;
 
-import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 
 // 稻草人本体与头颅 两手物品
 // 戴上头颅时本体换成无头模型
@@ -107,7 +107,7 @@ public final class ScarecrowElement implements FurnitureElement {
     }
 
     @Override
-    public void gatherInteractableEntityId(Consumer<Integer> collector) {
+    public void gatherInteractableEntityId(IntConsumer collector) {
     }
 
     @Override
