@@ -78,12 +78,14 @@ public final class FlexMatcher {
         boolean equivalent = recipe.useEquivalentFoods() && groups.hasEquivalents();
         boolean seasoning = recipe.useSeasonings() && groups.hasSeasonings();
         int index = (equivalent ? 1 : 0) | (seasoning ? 2 : 0);
-        if (cache[index] != null) {
+        boolean hasRequiredSeasoning = seasoning && hasRequiredSeasoning(recipe, groups);
+        if (!hasRequiredSeasoning && cache[index] != null) {
             return cache[index];
         }
         Map<Key, Integer> counts = new HashMap<>();
         for (Key ingredient : ingredientIds) {
-            if (seasoning && groups.isSeasoning(ingredient)) {
+            if (seasoning && groups.isSeasoning(ingredient)
+                    && !recipe.perfect().containsKey(ingredient)) {
                 continue;
             }
             counts.merge(equivalent ? groups.canonical(ingredient) : ingredient, 1, Integer::sum);
@@ -91,8 +93,20 @@ public final class FlexMatcher {
         double norm = norm(counts.values());
         // 一锅全是调味品 这条视图下没有有效食材 用它的配方一律不成立
         View built = norm <= 0 ? null : new View(counts, norm, equivalent);
-        cache[index] = built;
+        if (!hasRequiredSeasoning) {
+            cache[index] = built;
+        }
         return built;
+    }
+
+    // 配方明确写进 perfect 的调味品是主料，不能按“顺手添加”的逻辑剔除
+    private static boolean hasRequiredSeasoning(FlexFoodRecipe recipe, FoodGroups groups) {
+        for (Key ingredient : recipe.perfect().keySet()) {
+            if (groups.isSeasoning(ingredient)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // 同一等效组里的两种必需食材会被归并成一项 权重相加 范数必须跟着重算

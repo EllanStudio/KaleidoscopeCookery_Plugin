@@ -101,6 +101,35 @@ class FlexMatcherGroupsTest {
         assertNull(match(beefDish(true, true), List.of(SUGAR, SUGAR)));
     }
 
+    @Test
+    void requiredSeasoningParticipatesInMatching() {
+        FlexFoodRecipe recipe = FlexFoodRecipe.of(Key.of("test:sweet_dish"), Key.of("test:result"),
+                ApplianceType.POT, Map.of(BEEF, 1, SUGAR, 2), List.of(), null, true, true);
+
+        FlexMatcher.Match match = match(recipe, List.of(PORK, SUGAR, SUGAR));
+        assertNotNull(match);
+        assertEquals(1, match.portions());
+        assertEquals(DishQuality.fromDeviation(0), match.quality());
+    }
+
+    @Test
+    void missingRequiredSeasoningStillFails() {
+        FlexFoodRecipe recipe = FlexFoodRecipe.of(Key.of("test:sweet_dish"), Key.of("test:result"),
+                ApplianceType.POT, Map.of(BEEF, 1, SUGAR, 2), List.of(), null, true, true);
+
+        assertNull(match(recipe, List.of(BEEF)));
+    }
+
+    @Test
+    void extraRequiredSeasoningHurtsQuality() {
+        FlexFoodRecipe recipe = FlexFoodRecipe.of(Key.of("test:sweet_dish"), Key.of("test:result"),
+                ApplianceType.POT, Map.of(BEEF, 1, SUGAR, 2), List.of(), null, true, true);
+
+        FlexMatcher.Match match = match(recipe, List.of(BEEF, SUGAR, SUGAR, SUGAR));
+        assertNotNull(match);
+        assertEquals(DishQuality.fromDeviation(1), match.quality());
+    }
+
     // 白名单从 perfect 反推 等效替身与调味品都反推不到 必须靠 isAllowed 兜底放行
     @Test
     void equivalentAndSeasoningPassWhitelist() {
