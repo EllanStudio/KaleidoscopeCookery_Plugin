@@ -6,6 +6,7 @@ import net.momirealms.craftengine.core.plugin.CraftEngine;
 import net.momirealms.craftengine.core.plugin.config.ConfigSection;
 import net.momirealms.craftengine.core.plugin.config.SectionConfigParser;
 import net.momirealms.craftengine.core.plugin.config.lifecycle.LoadingStage;
+import net.momirealms.craftengine.core.util.Key;
 import org.bukkit.entity.Ageable;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
@@ -17,10 +18,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Runtime registry for entities that can pull a millstone.
- *
- * <p>Plugins can register vanilla entity types directly or add a provider for
- * custom entities from plugins such as MythicMobs.</p>
+ * Runtime registry for entities that can pull a millstone. Register vanilla
+ * entity types directly, or add a provider for custom entities from plugins
+ * such as MythicMobs.
  */
 @SuppressWarnings("unused")
 public final class MillstoneAnimals {
@@ -126,10 +126,8 @@ public final class MillstoneAnimals {
     }
 
     /**
-     * Returns the registered profile for a Bukkit entity type.
-     *
-     * <p>This does not query custom providers because no entity instance is
-     * available.</p>
+     * Returns the registered profile for a Bukkit entity type. Custom providers
+     * are not queried because no entity instance is available.
      *
      * @param type entity type
      * @return the registered profile, or {@code null}
@@ -181,6 +179,11 @@ public final class MillstoneAnimals {
 
     private static final class AnimalsParser extends SectionConfigParser {
         private int count;
+
+        @Override
+        public Key type() {
+            return Key.of("kaleidoscopecookery:millstone_animals");
+        }
 
         @Override
         public String[] sectionId() {

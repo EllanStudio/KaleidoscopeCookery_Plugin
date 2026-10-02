@@ -18,7 +18,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 
 public final class MillstoneElement implements FurnitureElement {
     private final MillstoneController controller;
@@ -32,12 +32,9 @@ public final class MillstoneElement implements FurnitureElement {
     private final int stoneId;
     private final UUID stoneUuid;
 
-    private Object spawnPacket1;
-    private Object metaPacket1;
-    private Object spawnPacket2;
-    private Object metaPacket2;
-    private Object spawnPacket3;
-    private Object metaPacket3;
+    private volatile List<Object> spawnPackets = List.of();
+    private volatile MetaFrame metaFrame;
+    private volatile long metaVersion;
 
     private static final int GRIND_SLOTS = MillstoneController.GRIND_SLOTS;
     private final ItemDisplaySet grindDisplay = new ItemDisplaySet(GRIND_SLOTS);
@@ -71,35 +68,59 @@ public final class MillstoneElement implements FurnitureElement {
     }
 
     public void refreshPackets() {
-        this.spawnPacket1 = model.spawn(basePos, stick1Id, stick1Uuid);
-        this.spawnPacket2 = model.spawn(basePos, stick2Id, stick2Uuid);
-        this.spawnPacket3 = model.spawn(basePos, stoneId, stoneUuid);
+        this.spawnPackets = List.of(
+                model.spawn(basePos, stick1Id, stick1Uuid),
+                model.spawn(basePos, stick2Id, stick2Uuid),
+                model.spawn(basePos, stoneId, stoneUuid));
+        invalidateMeta();
+    }
 
+    // 静态 meta 只有新观察者 show 时才用得上 动画每帧重建等于每帧白建三个包
+    private void invalidateMeta() {
+        this.metaVersion++;
+        this.metaFrame = null;
+    }
+
+    private List<Object> metaPackets() {
+        long version = this.metaVersion;
+        MetaFrame cached = this.metaFrame;
+        if (cached != null && cached.version() == version) {
+            return cached.packets();
+        }
+        float yaw = baseYawRad();
         float angle = controller.currentAngle();
-        this.metaPacket1 = model.stick1Meta(stick1Id, baseYawRad(), angle, 0);
-        this.metaPacket2 = model.stick2Meta(stick2Id, baseYawRad(), angle, 0);
-        this.metaPacket3 = model.stoneMeta(stoneId, baseYawRad(), angle, 0);
+        List<Object> created = List.of(
+                model.stick1Meta(stick1Id, yaw, angle, 0),
+                model.stick2Meta(stick2Id, yaw, angle, 0),
+                model.stoneMeta(stoneId, yaw, angle, 0));
+        if (this.metaVersion == version) {
+            this.metaFrame = new MetaFrame(version, created);
+        }
+        return created;
     }
 
     public void updateRotation(float targetAngle, int durationTicks) {
         float yaw = baseYawRad();
-        Object packet1 = model.stick1Meta(stick1Id, yaw, targetAngle, durationTicks);
-        Object packet2 = model.stick2Meta(stick2Id, yaw, targetAngle, durationTicks);
-        Object packet3 = model.stoneMeta(stoneId, yaw, targetAngle, durationTicks);
-
-        List<Object> packets = new ArrayList<>();
-        packets.add(packet1);
-        packets.add(packet2);
-        packets.add(packet3);
-        Object bundlePacket = PacketBundles.of(packets);
+        Object bundlePacket = PacketBundles.of(List.of(
+                model.stick1Meta(stick1Id, yaw, targetAngle, durationTicks),
+                model.stick2Meta(stick2Id, yaw, targetAngle, durationTicks),
+                model.stoneMeta(stoneId, yaw, targetAngle, durationTicks)));
 
         for (Player p : TrackedPlayers.snapshotInRange(controller.furniture().getTrackedBy(), srcChunkX, srcChunkZ, controller.behavior().animChunkRadius)) {
             p.sendPacket(bundlePacket, false);
         }
+        invalidateMeta();
+    }
 
-        this.metaPacket1 = model.stick1Meta(stick1Id, yaw, targetAngle, 0);
-        this.metaPacket2 = model.stick2Meta(stick2Id, yaw, targetAngle, 0);
-        this.metaPacket3 = model.stoneMeta(stoneId, yaw, targetAngle, 0);
+    public void updateFinalRotation(float angle) {
+        float yaw = baseYawRad();
+        Object bundlePacket = PacketBundles.of(List.of(
+                model.stick1Meta(stick1Id, yaw, angle, 0),
+                model.stick2Meta(stick2Id, yaw, angle, 0),
+                model.stoneMeta(stoneId, yaw, angle, 0)));
+        TrackedPlayers.forEach(controller.furniture().getTrackedBy(),
+                player -> player.sendPacket(bundlePacket, false));
+        invalidateMeta();
     }
 
     private void buildGrindSlotPackets(int slot, Item item) {
@@ -174,7 +195,7 @@ public final class MillstoneElement implements FurnitureElement {
     }
 
     @Override
-    public void gatherInteractableEntityId(Consumer<Integer> collector) {
+    public void gatherInteractableEntityId(IntConsumer collector) {
         collector.accept(stick1Id);
         collector.accept(stick2Id);
         collector.accept(stoneId);
@@ -182,18 +203,22 @@ public final class MillstoneElement implements FurnitureElement {
 
     @Override
     public void show(@NotNull Player player) {
-        if (spawnPacket1 != null) {
-            List<Object> packets = new ArrayList<>();
-            packets.add(spawnPacket1);
-            packets.add(metaPacket1);
-            packets.add(spawnPacket2);
-            packets.add(metaPacket2);
-            packets.add(spawnPacket3);
-            packets.add(metaPacket3);
-
+        List<Object> spawns = this.spawnPackets;
+        if (!spawns.isEmpty()) {
+            List<Object> metas = metaPackets();
+            List<Object> packets = new ArrayList<>(6);
+            packets.add(spawns.get(0));
+            packets.add(metas.get(0));
+            packets.add(spawns.get(1));
+            packets.add(metas.get(1));
+            packets.add(spawns.get(2));
+            packets.add(metas.get(2));
             PacketBundles.send(player, packets);
         }
         sendAllGrind(player);
+    }
+
+    private record MetaFrame(long version, List<Object> packets) {
     }
 
     @Override

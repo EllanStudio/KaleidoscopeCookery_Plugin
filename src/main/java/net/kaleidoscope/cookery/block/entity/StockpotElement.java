@@ -9,9 +9,9 @@ import net.momirealms.craftengine.bukkit.util.RegistryUtils;
 import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityElement;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
+import net.momirealms.craftengine.core.util.ItemUtils;
 import net.momirealms.craftengine.core.util.Key;
 import net.momirealms.craftengine.core.util.MiscUtils;
-import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.WorldPosition;
 import net.momirealms.craftengine.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
 import net.momirealms.craftengine.proxy.minecraft.network.protocol.game.ClientboundAddEntityPacketProxy;
@@ -54,6 +54,7 @@ public final class StockpotElement implements BlockEntityElement {
 
     private Key currentLiquidModel() {
         if (controller.stage() == StockpotStage.FINISHED) return ItemKeys.STOVE_FINISHED;
+        if (controller.stage() == StockpotStage.PUT_SOUP_BASE) return null;
         return SoupBaseRegistry.instance().showModel(controller.soupBaseId());
     }
 
@@ -146,6 +147,16 @@ public final class StockpotElement implements BlockEntityElement {
         return packets.isEmpty() ? null : PacketBundles.of(packets);
     }
 
+    public Object buildStaticIngredientBundle() {
+        List<Object> packets = new ArrayList<>();
+        for (int i = 0; i < controller.ingredients().size(); i++) {
+            if (display.meta(i) != null) {
+                packets.add(display.meta(i));
+            }
+        }
+        return packets.isEmpty() ? null : PacketBundles.of(packets);
+    }
+
     private void refreshLiquidAndFishPackets() {
         String id = controller.soupBaseId().asString();
 
@@ -188,7 +199,7 @@ public final class StockpotElement implements BlockEntityElement {
         Key model = currentLiquidModel();
         if (model == null) return null;
         Item item = InventoryUtils.createOrEmpty(model, player);
-        if (item == null) return null;
+        if (ItemUtils.isEmpty(item)) return null;
         item = BukkitItemManager.instance().s2c(item, player).orElse(item);
 
         // interpolation 5 是盛出时液面下降的一次性平滑 不是连续动画 不受动画视距 gate
@@ -213,7 +224,7 @@ public final class StockpotElement implements BlockEntityElement {
         types.put("minecraft:pufferfish_bucket", getEntityTypeByKey("minecraft:pufferfish"));
         types.put("minecraft:axolotl_bucket", getEntityTypeByKey("minecraft:axolotl"));
         types.put("minecraft:tadpole_bucket", getEntityTypeByKey("minecraft:frog"));
-        types.values().removeIf(java.util.Objects::isNull);
+        types.values().removeIf(Objects::isNull);
         return Map.copyOf(types);
     }
 
@@ -232,13 +243,10 @@ public final class StockpotElement implements BlockEntityElement {
         if (fishSpawnPacket == null || fishMetaPacket == null) return;
         packets.add(fishSpawnPacket);
         packets.add(fishMetaPacket);
-        if (VersionHelper.isOrAbove1_20_5) {
-            Object attributeIns = AttributeInstanceProxy.INSTANCE.newInstance$0(
-                    AttributesProxy.SCALE, $ -> {});
-            AttributeInstanceProxy.INSTANCE.setBaseValue(attributeIns, 0.5f);
-            packets.add(ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance$0(
-                    fishEntityId, Collections.singletonList(attributeIns)));
-        }
+        Object attributeIns = AttributeInstanceProxy.INSTANCE.newInstance$0(AttributesProxy.SCALE, $ -> {});
+        AttributeInstanceProxy.INSTANCE.setBaseValue(attributeIns, 0.5f);
+        packets.add(ClientboundUpdateAttributesPacketProxy.INSTANCE.newInstance$0(
+                fishEntityId, Collections.singletonList(attributeIns)));
     }
 
     @Override

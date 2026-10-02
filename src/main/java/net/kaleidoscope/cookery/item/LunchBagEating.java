@@ -1,13 +1,12 @@
 package net.kaleidoscope.cookery.item;
 
+import net.kaleidoscope.cookery.util.FoliaUtil;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.entity.player.InteractionHand;
 import net.momirealms.craftengine.core.entity.player.Player;
@@ -53,7 +52,7 @@ public final class LunchBagEating {
         player.setItemInHand(hand, eating);
 
         org.bukkit.entity.Player bukkitPlayer = (org.bukkit.entity.Player) player.platformPlayer();
-        BukkitCraftEngine.instance().scheduler().platform().runLater(
+        FoliaUtil.runLater(
                 () -> cancelIfNotEating(bukkitPlayer), null, START_GRACE_TICKS, bukkitPlayer);
     }
 
@@ -100,10 +99,8 @@ public final class LunchBagEating {
         }
     }
 
-    // 判据只能是手有没有抬起 别再加"正在用的是不是进食态"之类的附加条件
-    // 宽限期(20t)短于进食时长(40t) 这个兜底必然在进食中途触发一次
-    // 任何附加条件一旦判失败就会当场 restore 打断进食 玩家永远吃不完
-    // 举盾拉弓导致进食态残留属于边缘情况 交给 onStopUsing/onHeldChange/onDrop/onJoin 四个钩子兜底
+    // 判据只能是手有没有抬起 宽限期 20t 短于进食 40t 这个兜底必然在进食中途触发一次
+    // 再加附加条件一旦判失败就当场 restore 打断进食 残留交给 onStopUsing/onHeldChange/onDrop/onJoin 兜底
     private static void cancelIfNotEating(org.bukkit.entity.Player bukkitPlayer) {
         if (bukkitPlayer.isOnline() && !bukkitPlayer.isHandRaised()) {
             restore(bukkitPlayer);
@@ -126,7 +123,7 @@ public final class LunchBagEating {
     }
 
     // 1.21.2 起进食附带的效果从 food.effects 移到了 consumable.on_consume_effects
-    // 这里只处理 apply_effects 其余类型(清除效果 随机传送等)原版语义复杂 用到再补
+    // 当前仅支持 apply_effects，其他原版消费效果不在支持范围内
     private static void applyConsumeEffects(org.bukkit.entity.Player bukkitPlayer, Item food) {
         if (CONSUMABLE_COMPONENT == null) {
             return;

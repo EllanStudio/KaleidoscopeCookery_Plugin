@@ -1,5 +1,7 @@
 package net.kaleidoscope.cookery.block.entity;
 
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.block.behavior.ShawarmaSpitBehavior;
 
 import net.momirealms.craftengine.bukkit.item.BukkitItemManager;
@@ -29,7 +31,6 @@ import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.recipe.ApplianceType;
 import net.kaleidoscope.cookery.recipe.ApplianceFoodRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
-import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
 
 import java.util.Arrays;
 import java.util.function.Consumer;
@@ -64,7 +65,9 @@ public class ShawarmaSpitController extends BlockEntityController {
     public ShawarmaSpitController(BlockEntity blockEntity, ShawarmaSpitBehavior behavior) {
         super(blockEntity);
         this.behavior = behavior;
-        this.lower = blockEntity.blockState.get(behavior.getHalfProperty()) != DoubleBlockHalf.UPPER;
+        var halfProperty = behavior.getHalfProperty();
+        this.lower = BlockStates.value(blockEntity.blockState, halfProperty, halfProperty.defaultValue())
+                != DoubleBlockHalf.UPPER;
         for (Item[] layer : items) {
             Arrays.fill(layer, Item.empty());
         }
@@ -73,14 +76,15 @@ public class ShawarmaSpitController extends BlockEntityController {
 
     @Override
     public <C extends BlockEntityController> BlockEntityTicker<C> createBlockEntityTicker(CEWorld world, ImmutableBlockState blockState) {
-        if (blockState.get(behavior.getHalfProperty()) == DoubleBlockHalf.UPPER) {
+        var halfProperty = behavior.getHalfProperty();
+        if (BlockStates.value(blockState, halfProperty, halfProperty.defaultValue()) == DoubleBlockHalf.UPPER) {
             return null;
         }
         return createTickerHelper((w, pos, state, controller) -> this.tick());
     }
 
     private boolean isPowered() {
-        return blockEntity.blockState.get(behavior.getPoweredProperty());
+        return BlockStates.value(blockEntity.blockState, behavior.getPoweredProperty(), false);
     }
 
     private boolean hasRaw() {
@@ -111,6 +115,9 @@ public class ShawarmaSpitController extends BlockEntityController {
 
     public void tick() {
         if (!isActive()) {
+            if (wasActive) {
+                element.updateFinalRotation();
+            }
             wasActive = false;
             return;
         }
@@ -299,7 +306,7 @@ public class ShawarmaSpitController extends BlockEntityController {
         for (int l = 0; l < LAYERS; l++) {
             for (int s = 0; s < SLOTS; s++) {
                 if (!items[l][s].isEmpty()) {
-                    DropUtils.dropAtCenter(blockEntity, items[l][s]);
+                    DropUtils.dropOnRemove(blockEntity, items[l][s]);
                 }
             }
         }
@@ -316,13 +323,14 @@ public class ShawarmaSpitController extends BlockEntityController {
         ListTag itemsTag = new ListTag();
         for (int l = 0; l < LAYERS; l++) {
             for (int s = 0; s < SLOTS; s++) {
-                if (items[l][s].isEmpty()) {
+                Tag itemTag = BlockEntityNbt.itemTag(items[l][s]);
+                if (itemTag == null) {
                     continue;
                 }
                 CompoundTag entry = new CompoundTag();
                 entry.putInt(K_LAYER, l);
                 entry.putInt(K_SLOT, s);
-                entry.put(K_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(items[l][s].minecraftItem()));
+                entry.put(K_ITEM, itemTag);
                 entry.putInt(K_PROGRESS, cookingProgress[l][s]);
                 entry.putInt(K_TIME, cookingTime[l][s]);
                 itemsTag.add(entry);

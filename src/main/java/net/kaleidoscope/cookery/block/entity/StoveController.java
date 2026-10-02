@@ -1,8 +1,9 @@
 package net.kaleidoscope.cookery.block.entity;
+import net.kaleidoscope.cookery.util.FoliaUtil;
+import net.kaleidoscope.cookery.util.BlockStates;
 
 import net.kaleidoscope.cookery.block.behavior.StoveBehavior;
 import net.kaleidoscope.cookery.block.entity.render.Particles;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
@@ -44,7 +45,7 @@ public final class StoveController extends BlockEntityController {
 
     private void animateTick(World level, BlockPos pos, ImmutableBlockState state) {
         Property<Boolean> litProperty = behavior.getLitProperty();
-        if (litProperty == null || !state.get(litProperty)) {
+        if (!BlockStates.value(state, litProperty, false)) {
             return;
         }
 
@@ -66,7 +67,7 @@ public final class StoveController extends BlockEntityController {
         double zOffset = offsetRandom;
         Property<Direction> facingProperty = behavior.getFacingProperty();
         if (facingProperty != null) {
-            Direction direction = state.get(facingProperty);
+            Direction direction = BlockStates.value(state, facingProperty, facingProperty.defaultValue());
             Direction.Axis axis = direction.axis();
             xOffset = axis == Direction.Axis.X ? direction.stepX() * 0.52 : offsetRandom;
             zOffset = axis == Direction.Axis.Z ? direction.stepZ() * 0.52 : offsetRandom;
@@ -78,7 +79,7 @@ public final class StoveController extends BlockEntityController {
         CEWorld ceWorld = super.blockEntity.world();
         int count = behavior.particleCount;
         // 末两参是区块坐标 会原样喂给 Bukkit.getRegionScheduler() 传方块坐标会调度到错误的 region
-        BukkitCraftEngine.instance().scheduler().platform().run(() -> {
+        FoliaUtil.run(() -> {
             if (crackle) {
                 level.playSound(new Vec3d(x, y, z), CRACKLE, volume, pitch, SoundSource.BLOCK);
             }

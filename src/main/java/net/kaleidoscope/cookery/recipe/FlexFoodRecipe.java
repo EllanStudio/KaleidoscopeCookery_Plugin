@@ -3,39 +3,43 @@ package net.kaleidoscope.cookery.recipe;
 import net.momirealms.craftengine.core.util.Key;
 
 import java.util.List;
+import java.util.Map;
 
-// 模糊配方 flex 适用于 POT 与 STOCKPOT 这类不要求精确食材的厨具
-// liquids 仅高汤锅使用 当前汤底桶 id 须命中其一才匹配 为空表示不限汤底 炒锅恒为空
+// perfect 同时声明必需食材和理想配比 norm 与 totalWeight 在解析期预计算
 public record FlexFoodRecipe(
         Key id,
         Key result,
         ApplianceType cook,
-        List<ItemRequirement> require,
-        List<RawRequirement> raw,
-        List<Key> preferred,
-        List<Key> unpreferred,
-        List<LoreCondition> loreConditions,
-        List<Key> liquids
+        Map<Key, Integer> perfect,
+        List<Key> liquids,
+        // 盛装容器 null 表示空手就能取 出锅提示与盛出判定都看它
+        Key carrier,
+        // 这道菜认不认等效食物表与调味品表 见 FoodGroups
+        boolean useEquivalentFoods,
+        boolean useSeasonings,
+        double norm,
+        int totalWeight
 ) {
-    // 非零 raw 要求的数量 用于多配方优先级排序
-    public int nonZeroRawCount() {
-        int count = 0;
-        for (RawRequirement r : raw) {
-            if (r.min() > 0) {
-                count++;
-            }
-        }
-        return count;
+    public static FlexFoodRecipe of(Key id, Key result, ApplianceType cook,
+                                    Map<Key, Integer> perfect, List<Key> liquids, Key carrier) {
+        return of(id, result, cook, perfect, liquids, carrier, true, true);
     }
 
-    // 所有非零 raw 要求的 min 之和 用于同优先级时的次级排序
-    public int totalMinCount() {
+    public static FlexFoodRecipe of(Key id, Key result, ApplianceType cook,
+                                    Map<Key, Integer> perfect, List<Key> liquids, Key carrier,
+                                    boolean useEquivalentFoods, boolean useSeasonings) {
+        double square = 0;
         int total = 0;
-        for (RawRequirement r : raw) {
-            if (r.min() > 0) {
-                total += r.min();
-            }
+        for (int weight : perfect.values()) {
+            square += (double) weight * weight;
+            total += weight;
         }
-        return total;
+        return new FlexFoodRecipe(id, result, cook, Map.copyOf(perfect), List.copyOf(liquids), carrier,
+                useEquivalentFoods, useSeasonings, Math.sqrt(square), total);
+    }
+
+    public FlexFoodRecipe withToggles(boolean useEquivalentFoods, boolean useSeasonings) {
+        return of(this.id, this.result, this.cook, this.perfect, this.liquids, this.carrier,
+                useEquivalentFoods, useSeasonings);
     }
 }

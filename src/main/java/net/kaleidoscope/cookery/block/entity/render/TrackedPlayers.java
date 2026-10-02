@@ -23,8 +23,15 @@ public final class TrackedPlayers {
         }
     }
 
-    // 玩家所在区块与源区块的切比雪夫距离都在 chunkRadius 内 才算动画可见
-    public static boolean withinChunkRange(Player player, int srcChunkX, int srcChunkZ, int chunkRadius) {
+    // 先快照再回调 回调里可能触发追踪集合变更
+    public static void forEach(Iterable<Player> tracked, Consumer<Player> action) {
+        List<Player> players = new ArrayList<>();
+        tracked.forEach(players::add);
+        players.forEach(action);
+    }
+
+    // 切比雪夫区块距离都在 chunkRadius 内才算动画可见
+    private static boolean withinChunkRange(Player player, int srcChunkX, int srcChunkZ, int chunkRadius) {
         int pcx = ((int) Math.floor(player.x())) >> 4;
         int pcz = ((int) Math.floor(player.z())) >> 4;
         return Math.abs(pcx - srcChunkX) <= chunkRadius && Math.abs(pcz - srcChunkZ) <= chunkRadius;

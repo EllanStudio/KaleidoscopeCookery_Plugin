@@ -6,6 +6,9 @@ import net.kaleidoscope.cookery.entity.cat.FruitBasketCatGoal;
 import net.kaleidoscope.cookery.util.DropUtils;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.momirealms.craftengine.bukkit.item.DataComponentTypes;
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.BlockStates;
+import net.kaleidoscope.cookery.util.ChunkIndex;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
 import net.momirealms.craftengine.core.block.entity.BlockEntity;
 import net.momirealms.craftengine.core.block.entity.BlockEntityController;
@@ -24,6 +27,7 @@ import net.momirealms.craftengine.libraries.nbt.ListTag;
 import net.momirealms.craftengine.libraries.nbt.Tag;
 import net.momirealms.craftengine.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.item.component.ItemContainerContentsProxy;
+import org.bukkit.World;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -46,6 +50,7 @@ public final class FruitBasketController extends BlockEntityController {
     private WorldPosition[] positions;
     private boolean positionsInitialized;
     private boolean creativeBreak;
+    private BasketPosition indexedPosition;
 
     public void markCreativeBreak() {
         this.creativeBreak = true;
@@ -77,12 +82,39 @@ public final class FruitBasketController extends BlockEntityController {
         return this.lastItems;
     }
 
+    private static final ChunkIndex<BasketPosition> INDEX = new ChunkIndex<>();
+    public static final int SEARCH_RADIUS = 6;
+
+    public static void forEachNear(World world, int blockX, int blockZ, Consumer<BasketPosition> action) {
+        INDEX.forEach(world, blockX, blockZ, action);
+    }
+
+    void unregisterFromIndex() {
+        if (this.indexedPosition != null) {
+            INDEX.unregister(this.indexedPosition);
+            this.indexedPosition = null;
+        }
+        this.positionsInitialized = false;
+    }
+
+    public static void clearIndex() {
+        INDEX.clear();
+    }
+
     public void ensurePositionsInitialized() {
         if (positionsInitialized || super.blockEntity.world == null) {
             return;
         }
-        Direction facing = behavior.getFacingProperty() != null
-                ? super.blockEntity.blockState.get(behavior.getFacingProperty()) : Direction.SOUTH;
+        World world = (World) super.blockEntity.world.world().platformWorld();
+        this.indexedPosition = new BasketPosition(
+                super.blockEntity.pos.x, super.blockEntity.pos.y, super.blockEntity.pos.z);
+        INDEX.register(this.indexedPosition, super.blockEntity::isValid, world,
+                this.indexedPosition.x, this.indexedPosition.z, SEARCH_RADIUS);
+        Direction facing = BlockStates.value(
+                super.blockEntity.blockState,
+                behavior.getFacingProperty(),
+                Direction.SOUTH
+        );
         int rotation = facing.data2d() * 90;
         Quaternionf facingRot = new Quaternionf().rotateY((float) Math.toRadians(-rotation));
 
@@ -182,13 +214,7 @@ public final class FruitBasketController extends BlockEntityController {
     public void saveCustomData(CompoundTag tag) {
         CompoundTag data = new CompoundTag();
         data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
-        ListTag list = new ListTag();
-        for (Item item : items) {
-            if (!item.isEmpty()) {
-                list.add(ItemStackUtils.saveMinecraftItemStackAsTag(item.minecraftItem()));
-            }
-        }
-        data.put(K_ITEMS, list);
+        data.put(K_ITEMS, BlockEntityNbt.saveItems(items));
         tag.put(DATA_KEY, data);
     }
 
@@ -197,20 +223,7 @@ public final class FruitBasketController extends BlockEntityController {
         Arrays.fill(items, Item.empty());
         CompoundTag data = tag.getCompound(DATA_KEY);
         if (data != null) {
-            int dataVersion = data.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
-            ListTag list = data.getList(K_ITEMS);
-            if (list != null) {
-                int i = 0;
-                for (Tag t : list) {
-                    if (i >= SLOTS) {
-                        break;
-                    }
-                    Object nms = ItemStackUtils.parseMinecraftItem(t, dataVersion);
-                    if (nms != null) {
-                        items[i++] = ItemStackUtils.wrap(nms);
-                    }
-                }
-            }
+            BlockEntityNbt.loadItems(data.getList(K_ITEMS), BlockEntityNbt.dataVersion(data), items);
         }
         for (int i = 0; i < SLOTS; i++) {
             element.refreshItem(i, items[i]);
@@ -252,6 +265,7 @@ public final class FruitBasketController extends BlockEntityController {
 
     @Override
     public void onRemove() {
+        unregisterFromIndex();
         if (super.blockEntity.world != null) {
             FruitBasketCatGoal.releaseClaim(super.blockEntity.world.world().uuid(),
                     super.blockEntity.pos.x, super.blockEntity.pos.y, super.blockEntity.pos.z);
@@ -259,7 +273,7 @@ public final class FruitBasketController extends BlockEntityController {
         if (creativeBreak) {
             for (Item item : items) {
                 if (!item.isEmpty()) {
-                    DropUtils.dropAtCenter(super.blockEntity, item);
+                    DropUtils.dropOnRemove(super.blockEntity, item);
                 }
             }
         } else {
@@ -271,9 +285,33 @@ public final class FruitBasketController extends BlockEntityController {
                     nmsItems.add(item.isEmpty() ? ItemStackProxy.EMPTY : item.minecraftItem());
                 }
                 basket.setExactComponent(DataComponentTypes.CONTAINER, ItemContainerContentsProxy.INSTANCE.fromItems(nmsItems));
-                DropUtils.dropAtCenter(super.blockEntity, basket);
+                DropUtils.dropOnRemove(super.blockEntity, basket);
             }
         }
         Arrays.fill(items, Item.empty());
+    }
+
+    public static final class BasketPosition {
+        private final int x;
+        private final int y;
+        private final int z;
+
+        private BasketPosition(int x, int y, int z) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+
+        public int x() {
+            return this.x;
+        }
+
+        public int y() {
+            return this.y;
+        }
+
+        public int z() {
+            return this.z;
+        }
     }
 }

@@ -24,9 +24,9 @@ import net.kaleidoscope.cookery.recipe.FoodRecipeRegistry;
 import net.kaleidoscope.cookery.recipe.FoodRecipeResult;
 import net.kaleidoscope.cookery.item.ItemKeys;
 import net.kaleidoscope.cookery.item.ItemNames;
+import net.kaleidoscope.cookery.item.ItemIcons;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -47,18 +47,19 @@ public final class RecipeUtils {
     private static final String TEXT_INGREDIENTS = "tooltip.kaleidoscopecookery.recipe_item.ingredient";
     private static final String TEXT_OUTPUT = "tooltip.kaleidoscopecookery.recipe_item.output";
     private static final String TEXT_REQUIRED_LIQUID = "tooltip.kaleidoscopecookery.recipe_item.required_liquid";
-    private static final String TEXT_USE = "tooltip.kaleidoscopecookery.recipe_item.use";
     private static final String TEXT_TITLE = "item.kaleidoscopecookery.recipe_item.title";
 
+    // getItemMeta 每次都从 NBT 重建一份 只取一次
     public static boolean hasRecipe(ItemStack stack) {
-        if (stack == null || stack.getItemMeta() == null) {
+        if (stack == null) {
             return false;
         }
-        return stack.getItemMeta().getPersistentDataContainer().has(HAS_RECIPE_KEY, PersistentDataType.BYTE);
+        ItemMeta meta = stack.getItemMeta();
+        return meta != null && meta.getPersistentDataContainer().has(HAS_RECIPE_KEY, PersistentDataType.BYTE);
     }
 
-    // 炒锅与高汤锅的食材上限都是 8 食谱记录再长也没意义 上限同时防伪造 PDC 撑爆循环
-    private static final int MAX_AUTO_FILL_INGREDIENTS = 8;
+    // 按厨具中的最大容量限长 具体厨具仍会在 addIngredient 中执行自己的上限
+    private static final int MAX_AUTO_FILL_INGREDIENTS = 9;
 
     public static boolean tryAutoFill(Player player, ItemStack recipeStack,
                                       Predicate<Item> addIngredient) {
@@ -183,6 +184,7 @@ public final class RecipeUtils {
         }
 
         List<Component> lore = new ArrayList<>();
+        lore.add(Component.empty());
         lore.add(label(TEXT_INGREDIENTS).append(Component.space()).append(images(ingredients)));
         lore.add(Component.empty());
         lore.add(outLine);
@@ -190,8 +192,6 @@ public final class RecipeUtils {
             lore.add(Component.empty());
             lore.add(label(TEXT_REQUIRED_LIQUID).append(Component.space()).append(image(liquid)));
         }
-        lore.add(Component.translatable(TEXT_USE).color(NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-
         meta.lore(lore);
         meta.displayName(Component.translatable(TEXT_TITLE, NamedTextColor.WHITE, resultName, applianceName)
                 .decoration(TextDecoration.ITALIC, false));
@@ -227,8 +227,13 @@ public final class RecipeUtils {
         return component;
     }
 
+    // 未扫描到图标时回退为物品名
     private static Component image(Key key) {
-        return MiniMessage.miniMessage().deserialize("<image:kaleidoscopecookery:" + key.value() + ">");
+        String icon = ItemIcons.iconId(key);
+        if (icon == null) {
+            return displayName(key);
+        }
+        return MiniMessage.miniMessage().deserialize("<image:" + icon + ">");
     }
 
     private static Component displayName(Item item) {

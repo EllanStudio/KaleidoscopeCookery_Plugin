@@ -35,6 +35,7 @@ import net.kaleidoscope.cookery.item.ItemMatch;
 import net.kaleidoscope.cookery.util.BehaviorConfig;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.SupportStateUtils;
+import org.bukkit.GameMode;
 public final class TeapotBehavior extends BukkitBlockBehavior implements EntityBlock {
     public static final BlockBehaviorFactory<TeapotBehavior> FACTORY = new Factory();
 
@@ -46,9 +47,6 @@ public final class TeapotBehavior extends BukkitBlockBehavior implements EntityB
     public int particleInterval = 20;
     public int particleCount = 3;
 
-    public String msgPut = "kaleidoscopecookery.message.teapot.put";
-    public String msgProcessing = "kaleidoscopecookery.message.teapot.processing";
-    public String msgFinished = "kaleidoscopecookery.message.teapot.finished";
 
     private TeapotBehavior(BlockDefinition blockDefinition) {
         super(blockDefinition);
@@ -161,7 +159,8 @@ public final class TeapotBehavior extends BukkitBlockBehavior implements EntityB
     public Object playerWillDestroy(Object thisBlock, Object[] args) {
         Object nmsPlayer = args.length > 3 ? args[3] : null;
         if (isCreativePlayer(nmsPlayer)) {
-            CEWorld ceWorld = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(args[0]).getUID());
+            CEWorld ceWorld = BukkitWorldManager.instance().getWorld(
+                    LevelProxy.INSTANCE.getWorld(args[0]).getUID()).storageWorld();
             BlockEntity be = ceWorld.getBlockEntityAtIfLoaded(LocationUtils.fromBlockPos(args[1]));
             if (be != null) {
                 be.controller.let(TeapotController.class, this.controllerId, TeapotController::markCreativeBreak);
@@ -175,7 +174,7 @@ public final class TeapotBehavior extends BukkitBlockBehavior implements EntityB
             return false;
         }
         org.bukkit.entity.Player player = NmsBridgeProvider.bridge().bukkitPlayer(nmsPlayer);
-        return player != null && player.getGameMode() == org.bukkit.GameMode.CREATIVE;
+        return player != null && player.getGameMode() == GameMode.CREATIVE;
     }
 
     private boolean canHangChains(Object level, Object abovePos, Object aboveState) {
@@ -219,9 +218,6 @@ public final class TeapotBehavior extends BukkitBlockBehavior implements EntityB
             b.animChunkRadius = BehaviorConfig.getInt(section, b.animChunkRadius, "animation_view_distance", "animation-view-distance");
             b.particleInterval = BehaviorConfig.getInt(section, b.particleInterval, "particle_interval", "particle-interval");
             b.particleCount = BehaviorConfig.getInt(section, b.particleCount, "particle_count", "particle-count");
-            b.msgPut = BehaviorConfig.getString(section, b.msgPut, "msg_put", "msg-put");
-            b.msgProcessing = BehaviorConfig.getString(section, b.msgProcessing, "msg_processing", "msg-processing");
-            b.msgFinished = BehaviorConfig.getString(section, b.msgFinished, "msg_finished", "msg-finished");
             return b;
         }
     }

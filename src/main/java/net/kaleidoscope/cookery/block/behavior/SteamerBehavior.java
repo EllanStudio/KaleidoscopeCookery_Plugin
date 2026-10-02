@@ -6,7 +6,7 @@ import net.kaleidoscope.cookery.util.ConsoleMessages;
 
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitBlockBehavior;
 import net.momirealms.craftengine.bukkit.block.behavior.BukkitFallableBlock;
-import net.momirealms.craftengine.bukkit.nms.FastNMS;
+import net.momirealms.craftengine.bukkit.plugin.injector.FallingBlockEntityGenerator;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.DirectionUtils;
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
@@ -40,9 +40,9 @@ import net.momirealms.craftengine.core.world.Vec3d;
 import net.momirealms.craftengine.core.world.World;
 import net.momirealms.craftengine.core.world.context.BlockPlaceContext;
 import net.momirealms.craftengine.core.world.context.UseOnContext;
-import net.momirealms.craftengine.libraries.adventure.text.Component;
 import net.momirealms.craftengine.libraries.nbt.CompoundTag;
 import net.momirealms.craftengine.libraries.nbt.ListTag;
+import org.bukkit.inventory.ItemStack;
 import net.momirealms.craftengine.libraries.nbt.Tag;
 import net.momirealms.craftengine.proxy.minecraft.core.Vec3iProxy;
 import net.momirealms.craftengine.proxy.minecraft.world.level.BlockGetterProxy;
@@ -60,6 +60,7 @@ import net.kaleidoscope.cookery.util.BehaviorConfig;
 import net.kaleidoscope.cookery.util.InteractGuard;
 import net.kaleidoscope.cookery.util.InventoryUtils;
 import net.kaleidoscope.cookery.util.Localization;
+import net.kaleidoscope.cookery.util.MessageKeys;
 import net.kaleidoscope.cookery.plugin.KaleidoscopeCookeryPlugin;
 
 import java.util.ArrayList;
@@ -87,9 +88,6 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
     public int cookingTime = 200;
     public int particleInterval = 20;
     public int particleCount = 3;
-    public String msgMaxLayers = "kaleidoscopecookery.message.steamer.max_layers";
-    public String msgFull = "kaleidoscopecookery.message.steamer.full";
-    public String msgNeedStove = "kaleidoscopecookery.message.steamer.need_stove";
 
     private int controllerId;
     private Property<SlabType> typeProperty;
@@ -182,7 +180,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
     private InteractionResult handleStackSteamer(UseOnContext context, ImmutableBlockState state, World level, Player player, InteractionHand hand, Item itemInHand) {
         int cap = stackHeightCap(level, context.getClickedPos());
         if (stackLayerCount(level, context.getClickedPos()) >= cap) {
-            player.sendActionBar(Localization.componentWithReplacement(msgMaxLayers, "{max}", String.valueOf(cap)));
+            player.sendActionBar(Localization.componentWithReplacement(MessageKeys.STEAMER_MAX_LAYERS, "{max}", String.valueOf(cap)));
             return InteractionResult.SUCCESS_AND_CANCEL;
         }
 
@@ -202,7 +200,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         BlockHitResult hitResult = new BlockHitResult(context.getClickedLocation(), Direction.UP, placePos, false);
         BlockPlaceContext placeContext = new BlockPlaceContext(level, player, hand, itemInHand, hitResult);
         // 叠笼实际放置点是向上 walk 出的新位置 与点击位可能跨领地 放动作前再校验目标位置
-        if (!InteractGuard.canInteract(player, level, placePos)) {
+        if (!InteractGuard.canPlace(player, level, placePos)) {
             return InteractionResult.PASS;
         }
 
@@ -263,6 +261,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         if (!stack.get(0).canSteam(food)) {
             return 0;
         }
+        // 一次只填一格 从下往上找第一个有空位的 整摞一次填满会让上层没受热就塞满
+        // 一格是一个大蒸笼 由两个小蒸笼组成 所以 capacity 给 8 半格的小蒸笼给 4
         int remaining = food.count();
         int placed = 0;
         for (SteamerController c : stack) {
@@ -270,12 +270,12 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
                 remaining--;
                 placed++;
             }
-            if (remaining == 0) {
+            if (placed > 0) {
                 break;
             }
         }
         if (placed == 0) {
-            player.sendActionBar(Localization.component(msgFull));
+            player.sendActionBar(Localization.component(MessageKeys.STEAMER_FULL));
             return -1;
         }
         return placed;
@@ -434,23 +434,27 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         // 快照 NBT 并切断原方块实体的掉落 转交给下落实体
         BlockPos pos = LocationUtils.fromBlockPos(blockPos);
         CompoundTag tag = new CompoundTag();
-        BlockEntity blockEntity = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(level).getUID()).getBlockEntityAtIfLoaded(pos);
-        if (blockEntity != null) {
-            SteamerController controller = blockEntity.controller.get(SteamerController.class, this.controllerId);
-            if (controller != null) {
-                controller.saveCustomData(tag);
-                controller.markFallingAway();
-                Arrays.fill(controller.getItems(), Item.empty());
-            }
+        BlockEntity blockEntity = BukkitWorldManager.instance().getWorld(
+                LevelProxy.INSTANCE.getWorld(level).getUID()).storageWorld().getBlockEntityAtIfLoaded(pos);
+        SteamerController controller = blockEntity == null ? null
+                : blockEntity.controller.get(SteamerController.class, this.controllerId);
+        if (controller != null) {
+            controller.saveCustomData(tag);
+            controller.markFallingAway();
+            Arrays.fill(controller.getItems(), Item.empty());
         }
 
-        Object fallingBlockEntity = FastNMS.INSTANCE.createInjectedFallingBlockEntity(level, blockPos, blockState);
-        PendingData pending = new PendingData(tag, customState, this.controllerId);
-        if (fallingBlockEntity == null) {
-            dropSteamer(level, blockPos, pending);
+        // CE 26.9 移除了 FastNMS#createInjectedFallingBlockEntity 统一由 FallingBlockEntityGenerator 生成下落实体
+        Object fallingBlockEntity = FallingBlockEntityGenerator.fall(level, blockPos, blockState);
+        if (BlockGetterProxy.INSTANCE.getBlockState(level, blockPos) == blockState) {
+            // EntityChangeBlockEvent 被取消 方块留在原位且下落实体未生成 还原蒸笼内容
+            if (controller != null) {
+                controller.loadCustomData(tag);
+                controller.clearFallingAway();
+            }
             return;
         }
-        pendingData.put(fallingBlockEntity, pending);
+        pendingData.put(fallingBlockEntity, new PendingData(tag, customState, this.controllerId));
     }
 
     @Override
@@ -464,7 +468,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         }
 
         BlockPos landPos = LocationUtils.fromBlockPos(blockPos);
-        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(level).getUID());
+        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(
+                LevelProxy.INSTANCE.getWorld(level).getUID()).storageWorld();
 
         // 标记落地方块为下落中 避免 onRemove 误掉落
         BlockEntity landingEntity = ceWorld.getBlockEntityAtIfLoaded(landPos);
@@ -522,7 +527,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
 
     private void dropSteamer(Object level, Object blockPos, PendingData data) {
         try {
-            CEWorld ceWorld = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(level).getUID());
+            CEWorld ceWorld = BukkitWorldManager.instance().getWorld(
+                    LevelProxy.INSTANCE.getWorld(level).getUID()).storageWorld();
             BlockPos pos = LocationUtils.fromBlockPos(blockPos);
             Vec3d dropPos = Vec3d.atCenterOf(pos);
 
@@ -572,7 +578,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         Object belowPos = LocationUtils.below(LocationUtils.toBlockPos(clickedPos));
         if (!HeatSourceUtils.isHeatSource(level, belowPos)) {
             if (context.getPlayer() != null) {
-                context.getPlayer().sendActionBar(Localization.component(msgNeedStove));
+                context.getPlayer().sendActionBar(Localization.component(MessageKeys.STEAMER_NEED_STOVE));
             }
             return null;
         }
@@ -614,7 +620,8 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
     @Override
     public Object playerWillDestroy(Object thisBlock, Object[] args) {
         Object nmsPlayer = args.length > 3 ? args[3] : null;
-        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(LevelProxy.INSTANCE.getWorld(args[0]).getUID());
+        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(
+                LevelProxy.INSTANCE.getWorld(args[0]).getUID()).storageWorld();
         BlockEntity be = ceWorld.getBlockEntityAtIfLoaded(LocationUtils.fromBlockPos(args[1]));
         SteamerController c = be != null ? be.controller.get(SteamerController.class, this.controllerId) : null;
         if (c == null) {
@@ -625,7 +632,7 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
         if (c.isFullOfFinishedProducts()) {
             org.bukkit.entity.Player bukkitPlayer = bukkitPlayer(nmsPlayer);
             if (bukkitPlayer != null) {
-                List<org.bukkit.inventory.ItemStack> products = c.finishedProductStacks();
+                List<ItemStack> products = c.finishedProductStacks();
                 BlockPos pos = LocationUtils.fromBlockPos(args[1]);
                 Location location = new Location((org.bukkit.World) ceWorld.world().platformWorld(), pos.x(), pos.y(), pos.z());
                 boolean cancelled = EventUtils.fireAndCheckCancel(new SteamerBreakFullEvent(bukkitPlayer, location, products));
@@ -716,10 +723,12 @@ public final class SteamerBehavior extends BukkitBlockBehavior implements Entity
             behavior.stoveStackHeight = BehaviorConfig.getInt(section, behavior.stoveStackHeight, "stove_stack_height", "stove-stack-height");
             behavior.particleInterval = BehaviorConfig.getInt(section, behavior.particleInterval, "particle_interval", "particle-interval");
             behavior.particleCount = BehaviorConfig.getInt(section, behavior.particleCount, "particle_count", "particle-count");
-            behavior.msgMaxLayers = BehaviorConfig.getString(section, behavior.msgMaxLayers, "msg_max_layers", "msg-max-layers");
-            behavior.msgFull = BehaviorConfig.getString(section, behavior.msgFull, "msg_full", "msg-full");
-            behavior.msgNeedStove = BehaviorConfig.getString(section, behavior.msgNeedStove, "msg_need_stove", "msg-need-stove");
             return behavior;
         }
+    }
+
+    // pendingData 握着 NMS 实体的强引用 关服时 runLater 不会再跑 必须显式清
+    public static void clearAll() {
+        pendingData.clear();
     }
 }

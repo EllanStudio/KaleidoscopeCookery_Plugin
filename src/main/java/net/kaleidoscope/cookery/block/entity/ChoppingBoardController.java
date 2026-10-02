@@ -1,4 +1,6 @@
 package net.kaleidoscope.cookery.block.entity;
+import net.kaleidoscope.cookery.util.BlockEntityNbt;
+import net.kaleidoscope.cookery.util.BlockStates;
 import net.kaleidoscope.cookery.block.behavior.ChoppingBoardBehavior;
 
 import net.momirealms.craftengine.bukkit.util.ItemStackUtils;
@@ -9,7 +11,6 @@ import net.momirealms.craftengine.core.block.entity.render.element.BlockEntityEl
 import net.momirealms.craftengine.core.block.entity.tick.BlockEntityTicker;
 import net.momirealms.craftengine.core.entity.player.Player;
 import net.momirealms.craftengine.core.item.Item;
-import net.momirealms.craftengine.core.plugin.config.Config;
 import net.momirealms.craftengine.core.util.Direction;
 import net.momirealms.craftengine.core.util.VersionHelper;
 import net.momirealms.craftengine.core.world.CEWorld;
@@ -27,6 +28,8 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public class ChoppingBoardController extends BlockEntityController {
+    private static final float DISPLAY_HEIGHT = 0.625f;
+    private static final float DROP_HEIGHT = DISPLAY_HEIGHT + 0.1f;
     private static final String DATA_KEY = "kaleidoscopecookery:chopping_board";
     private static final String K_BLOCK_ENTITY_TAG = "BlockEntityTag";
     private static final String K_DATA_VERSION = "data_version";
@@ -45,16 +48,17 @@ public class ChoppingBoardController extends BlockEntityController {
         // 展示实体置于方块中心上方
         this.element = new ChoppingBoardElement(this, new WorldPosition(
                 null, (float) super.blockEntity.pos.x() + 0.5f,
-                (float) super.blockEntity.pos.y() + 0.625f,
+                (float) super.blockEntity.pos.y() + DISPLAY_HEIGHT,
                 (float) super.blockEntity.pos.z() + 0.5f
         ));
     }
 
     public float facingYawRadians() {
-        if (behavior.getFacingProperty() == null) {
+        var facingProperty = behavior.getFacingProperty();
+        if (facingProperty == null) {
             return 0f;
         }
-        Direction f = super.blockEntity.blockState.get(behavior.getFacingProperty());
+        Direction f = BlockStates.value(super.blockEntity.blockState, facingProperty, facingProperty.defaultValue());
         int data2D = switch (f) {
             case WEST -> 1;
             case NORTH -> 2;
@@ -100,7 +104,8 @@ public class ChoppingBoardController extends BlockEntityController {
         return currentStage;
     }
 
-    // 当前阶段的展示模型路径 无料时返回 null
+    // 当前阶段的展示模型 无料或配方没给模型时返回 null
+    // 返回 null 不代表不显示 调用方会退回展示放上去的物品本身
     public String currentStageModel() {
         if (isEmpty()) {
             return null;
@@ -152,7 +157,7 @@ public class ChoppingBoardController extends BlockEntityController {
 
         for (Item result : FoodRecipeRegistry.instance().rollChoppingResults(recipe)) {
             if (!result.isEmpty()) {
-                DropUtils.dropAtCenter(super.blockEntity, result);
+                DropUtils.dropAtHeight(super.blockEntity, result, DROP_HEIGHT);
             }
         }
         clearBoard();
@@ -191,7 +196,7 @@ public class ChoppingBoardController extends BlockEntityController {
     @Override
     public void onRemove() {
         if (!placedItem.isEmpty()) {
-            DropUtils.dropAtCenter(super.blockEntity, placedItem);
+            DropUtils.dropOnRemove(super.blockEntity, placedItem);
         }
         super.onRemove();
     }
@@ -213,9 +218,7 @@ public class ChoppingBoardController extends BlockEntityController {
         CompoundTag data = new CompoundTag();
         data.putInt(K_DATA_VERSION, VersionHelper.WORLD_VERSION);
         data.putInt(K_STAGE, currentStage);
-        if (!placedItem.isEmpty()) {
-            data.put(K_ITEM, ItemStackUtils.saveMinecraftItemStackAsTag(placedItem.minecraftItem()));
-        }
+        BlockEntityNbt.putItem(data, K_ITEM, placedItem);
         tag.put(DATA_KEY, data);
     }
 
@@ -226,15 +229,7 @@ public class ChoppingBoardController extends BlockEntityController {
             return;
         }
         this.currentStage = data.getInt(K_STAGE, 0);
-        this.placedItem = Item.empty();
-        Tag itemTag = data.get(K_ITEM);
-        if (itemTag != null) {
-            int dataVersion = data.getInt(K_DATA_VERSION, Config.itemDataFixerUpperFallbackVersion());
-            Object nmsItem = ItemStackUtils.parseMinecraftItem(itemTag, dataVersion);
-            if (nmsItem != null) {
-                this.placedItem = ItemStackUtils.wrap(nmsItem);
-            }
-        }
+        this.placedItem = BlockEntityNbt.getItem(data, K_ITEM, BlockEntityNbt.dataVersion(data));
         if (this.placedItem.isEmpty()) {
             this.currentStage = 0;
         }

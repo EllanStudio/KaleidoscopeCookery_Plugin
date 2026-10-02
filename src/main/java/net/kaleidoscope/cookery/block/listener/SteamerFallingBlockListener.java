@@ -1,12 +1,12 @@
 package net.kaleidoscope.cookery.block.listener;
+import net.kaleidoscope.cookery.util.FoliaUtil;
 
 import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import net.kaleidoscope.cookery.block.behavior.SteamerBehavior;
-import net.kaleidoscope.cookery.nms.NmsBridgeProvider;
 import net.kaleidoscope.cookery.util.HeatSourceUtils;
-import net.momirealms.craftengine.bukkit.plugin.BukkitCraftEngine;
 import net.momirealms.craftengine.bukkit.util.BlockStateUtils;
 import net.momirealms.craftengine.bukkit.util.LocationUtils;
+import net.momirealms.craftengine.bukkit.world.BukkitWorld;
 import net.momirealms.craftengine.bukkit.world.BukkitWorldManager;
 import net.momirealms.craftengine.core.block.BlockDefinition;
 import net.momirealms.craftengine.core.block.ImmutableBlockState;
@@ -47,14 +47,15 @@ public class SteamerFallingBlockListener implements Listener {
         if (!(event.getEntity() instanceof FallingBlock fb)) return;
         Object nmsEntity = getNmsHandle(fb);
         if (nmsEntity == null) return;
-        // 只处理被我们标记的蒸笼下落实体
+        // 只处理带蒸笼标记的下落实体
         if (!ceCancelledEntities.remove(nmsEntity)) return;
         SteamerBehavior.PendingData data = SteamerBehavior.pendingData.get(nmsEntity);
         if (data == null) return;
 
         Block block = event.getBlock();
-        CEWorld ceWorld = BukkitWorldManager.instance().getWorld(block.getWorld().getUID());
-        if (ceWorld == null) return;
+        BukkitWorld world = BukkitWorldManager.instance().getWorld(block.getWorld().getUID());
+        if (world == null) return;
+        CEWorld ceWorld = world.storageWorld();
         Object level = ceWorld.world().minecraftWorld();
         Object landingPos = LocationUtils.toBlockPos(block.getX(), block.getY(), block.getZ());
         Object belowPos = LocationUtils.toBlockPos(block.getX(), block.getY() - 1, block.getZ());
@@ -80,7 +81,8 @@ public class SteamerFallingBlockListener implements Listener {
         if (!SteamerBehavior.pendingData.containsKey(nmsEntity)) return;
         Location loc = fb.getLocation();
         World bukkitWorld = loc.getWorld();
-        CEWorld ceWorld = bukkitWorld == null ? null : BukkitWorldManager.instance().getWorld(bukkitWorld.getUID());
+        BukkitWorld world = bukkitWorld == null ? null : BukkitWorldManager.instance().getWorld(bukkitWorld.getUID());
+        CEWorld ceWorld = world == null ? null : world.storageWorld();
         if (ceWorld == null) {
             SteamerBehavior.pendingData.remove(nmsEntity);
             return;
@@ -89,7 +91,7 @@ public class SteamerFallingBlockListener implements Listener {
         Object blockPos = LocationUtils.toBlockPos(loc.getBlockX(), loc.getBlockY(), loc.getBlockZ());
         // 延迟一 tick 再掉落 成功落地时 onLand 会在本 tick 内清掉 pendingData
         // 下一 tick 若仍在 pendingData 才说明确实丢失 避免与正常落地重复掉落
-        BukkitCraftEngine.instance().scheduler().platform().runLater(() -> {
+        FoliaUtil.runLater(() -> {
             if (SteamerBehavior.pendingData.containsKey(nmsEntity)) {
                 SteamerBehavior.dropPendingSteamer(level, blockPos, nmsEntity);
             }
